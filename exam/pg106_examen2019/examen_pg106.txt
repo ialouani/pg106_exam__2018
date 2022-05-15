@@ -1,0 +1,370 @@
+Examen de PG106 - contrôle continu - 2018
+Julien Allali
+
+Supports non autorisés - Utilisation des machines de travail dans l'environnement «exam» autorisé
+
+**important: A LIRE !!!**
+-Seules les réponses fournies sur ce fichier seront prises en compte pour l'évaluation de l'épreuve.
+-Faire des réponses courtes et pertinentes.
+-Ne rien supprimer dans ce fichier, ajouter uniquement vos réponses aux emplacements indiqués 
+-Si vous donnez une commande erronée (option inexistante par exemple ou bien un nom de programme
+ qui n'existe pas ...) sans préciser que cela ne fonctionne pas: un MALUS sera appliqué.
+-Il y a bien 2 points bonus.
+
+== Informations ==
+NOM:
+PRENOM:
+LOGIN:
+SALLE D'EXAMEN:
+GROUPE DE TD:
+
+== Préparation: ==
+Faîtes une copie des fichiers originaux avant de les modifier.
+
+
+===================
+== LZ: 12 points ==
+===================
+Cet exercice repose sur l'archive lzm-master.zip: celle-ci est l'archive d'un projet github (branch master),
+malheureusement certains fichiers ont disparu ou bien ont été altérés!
+
+Quel est l'auteur de cette bibliothèque?  Quel est le système de compilation utilisé? (0.5)
+*Lachlan McIlroy
+*make
+#DEBUT A1
+#FIN A1
+
+Quel(s) fichier(s) implémentent la bibliothèque? Quel est l'objectif de cette bibliothèque?: (0.5)
+*lzm.c car pour utiliser celui-la(le systeme de compression/decompression sans pertes) il faut inclure le header lzm.h qui inclut aucun autre header relie a un c presentant d'aautres fonctionnalitées => C'est PLUTOT lzm.h qui implemente la bibliotheque.(0.5 pts donc facile a trouver) RESUME(<=>'<=>') lzm.h.(conf.h ne fait rien(n'integre pas d'autres fonctions)).
+(((=>depuis le fichier README.md.)))
+*systeme de compression de fichiers a faible cout memoire et presentant l'option level qui veut dire niveau de compression et qui permet de voir (via l'exploitation de la biblio) la vitesse de traitement pour le compression de donnees.(Gbits/s) <=> compression/decompression sans pertes.
+#DEBUT A2
+#FIN A2
+
+Il y a deux executables inclus: l'un dépend de la bibliothèque, l'autre non. Donner pour chaque programme une
+unique commande permettant de produire un executable: (1)
+*Celui qui inclut le lzm.h necessite la bibliotheque;c'est une remarque. Depuis le Readme.md ; on a 2 executables: lzm et lzmdata.
+=>lzdata avec les couleurs et la non-inclusion de lzm.h ne depend pas de bibliotheque.
+=>lzm qui est un executable qui est l'image de la bibliotheque liblzm.so(to compile lzm sample) VEUT DIRE EXECUTABLE VIA MAKE qui depend trivialement de la bibliotheque car l'autre n'inclut pas de lzm.h donc pas d'edition de liens en recherche de symboles(dependances) d'apres l'utilisation indiquee dans le readme. Les deux executables etaient trouvees via le systeme de compilation MAKE detaile dans ce dernier.
+**/ Les 2 commandes uniques pour produire les 2 executables en question:
+ a-gcc -o lzdata lzdata.c 
+ b-gcc -o lzm lzm.c lzmencode.c lzmdecode.c (car la compilation de lzm.c genere des undefined reference to donc on recherche dans les autres fichiers les fonctions undefined en edition de liens on les retrouve pas a pas avec l'ajout et la production sans erreurs (3 fichiers ; lzdata.c epargne bien sur de la recherche))
+#DEBUT A3
+#FIN A3
+
+On appelle A le programme qui dépend de la bibliothèque et B celui qui ne dépend pas de la bibliothèque.
+
+Concernant le programme B, celui-ci sert à générer des fichiers dont le contenu est "aléatoire".
+Donner la commande permettant de compiler B afin d'en étudier la couverture (0.5)
+B: lzm(programme donc executable)
+gcc -c lzdata.c --coverage => generation de lzdata.o bien sur ajout de LZDATA.GCNO.
+=>pour compiler afin d'en etudier la couverture ; on peut le faire directement vu qu'il n'y pas de dependances: gcc -o lzdata lzdata.c --coverage
+OU BIEN: gcc --coverage lzdata.c -o lzdata.(generation de lzdata.gcno bien sur puis de *.gcda<=>*.c.gcda pour lancer l'executable avec gcov et recuperer les donnees (de couverture))
+VOILA.
+#DEBUT A4
+#FIN A4
+
+Quelle est la couverture du programme B lorsqu'il est lancé sans aucune option. Donner la ou les commandes
+permettant de calculer celle-ci (1.0)
+#DEBUT A5
+on execute: ./lzdata => .gcda genere.
+Puis on teste la couverture complete;partielle;en rouge via:
+   gcov lzdata.gcda.
+19.77% de lzdata.c recouvert(tres faible(sans aucune OPTION)). 
+0.00% pour mem.h (bien sur car aucune OPTION..///).
+REMARQUE IMPORTANTE: a recopier pour en avoir le coeur nette apres:
+On lance le programme sans option:
+$ ./lzdata
+On analyse la trace d'execution avec gcov:
+$ gcov lzdata.c 
+File 'lzdata.c'
+Lines executed:19.77% of 258
+Creating 'lzdata.c.gcov'
+
+File 'mem.h'
+Lines executed:0.00% of 3
+Creating 'mem.h.gcov'
+#FIN A5
+
+Utiliser le programme B avec les options suivantes: "--filesize 4 data". Quelle est la  couverture cumulée de
+cette nouvelle exécution avec celle précédente? (0.5)
+#DEBUT A6
+On lance l'execution du programme lzdata:
+./lzdata --filesize 4 data
+puis la commande+les rslts suivantes/suivants:
+$gcov lzdata.c(gcov lzdata.gcda c'est la meme chose la 2ieme est souhaitee car pas de dependances pour ce programme(le B))
+File 'lzdata.c'
+Lines executed:58.53% of 258
+Creating 'lzdata.c.gcov'
+
+File 'mem.h'
+Lines executed:100.00% of 3
+Creating 'mem.h.gcov'
+=>mem.h 100% bien sur car fichier data en arguments..///
+=>augmentation de la couverture de l'ordre de ~39%(couverture cumulée) avec les options car passage par de nombreuses fonctions pour faire ceci et cela necessitant la compression desiree.(pas parler de mem.h ici car recupere une image memoire maitrisee seulement avec des MACROS)
+#FIN A6
+
+En utilisant le programme gprof, donner la suite de commandes qui permet de connaître les deux fonctions
+dans lesquelles l'exécution précédente passe le plus de temps. Pour ces deux fonctions, donner le nombre
+de fois que celles-ci sont appelées: (2.0)
+#DEBUT A7
+gcc -pg lzdata.c -o lzdata2 (pour differencier les cas) mais on peut rester sur la MEME CONVENTION.
+(on commence via la remarque CI-DESSOUS de FAIRE: rm data;rm -f *.o *.out lzdata si on s'est trompe tout au debut de la question 7)
+PUIS:RQ:: on se laisse sur la meme voie:
+	gcc -pg lzdata.c -o lzdata
+SUITE:(etude du code profiling(plus que le coverage qui concerne que les tests))
+ON DOIT executer lzdata sur un data plus grand(recommande pour les processus rapides):
+./lzdata --filesize 25 data
+PUIS l'etude globale via:
+gprof ./lzdata gmon.out > report.txt
+less report.txt
+OU BIEN OPTIONNEL:
+gprof -b -p lzdata gmon.out 
+(affiche le profil sans les details a plat)
+EXPORT gmon_out_prefix=my_profile (majuscule pour la variable)
+ainsi ./lzdata --filesize 4 data apres un rm *.out && rm data va generer un fichier my_profile.out au lieu d'un gmon.out. 
+VOILA.
+%   cumulative   self              self     total           
+ time   seconds   seconds    calls  ms/call  ms/call  name    
+100.26      0.03     0.03   637202     0.00     0.00  gen_match
+  0.00      0.03     0.00  2967225     0.00     0.00  rngl
+  0.00      0.03     0.00  1903113     0.00     0.00  rngd
+  0.00      0.03     0.00  1866644     0.00     0.00  writemem32
+  0.00      0.03     0.00   314358     0.00     0.00  gen_literal
+  0.00      0.03     0.00        7     0.00     4.30  generate_data
+  0.00      0.03     0.00        7     0.00     0.00  write_data
+  0.00      0.03     0.00        1     0.00    30.08  process_file
+a recopier avec redirection sur report.txt (il y a un programme python qui depuis le report.txt permet de generer le graphe en question(appelant <-> appele ./..)).
+VOILA.(2/2)
+les deux fichiers dans lequel j'ai passe le plus de temps sont:
+generate_data et process_file (incluant les appels et le temps des sous appels integres)
+resume a savoir ecrire:
+time le plus: dans les machines d'exams: 
+...
+%   cumulative   self              self     total           
+ time   seconds   seconds    calls  ms/call  ms/call  name    
+100.26      0.02     0.02   116112     0.00     0.00  gen_match
+  0.00      0.02     0.00   478829     0.00     0.00  rngl
+  0.00      0.02     0.00   346719     0.00     0.00  rngd
+  0.00      0.02     0.00   278325     0.00     0.00  writemem32
+  0.00      0.02     0.00    57248     0.00     0.00  gen_literal
+  0.00      0.02     0.00        1     0.00    20.05  generate_data
+  0.00      0.02     0.00        1     0.00    20.05  process_file
+  0.00      0.02     0.00        1     0.00     0.00  write_data
+Les deux fonctions(100.26% bizarre a ignorer) dans lequels le code passent le plus de temps est dont les nombre d'appels est important(histoire de granularite et consequences) sont: rngl et rngd.
+Habituellement, on recopie la partie qui represente time le plus grand et si la ligne ne comporte pas le plus d'informations elle est ignoree tout simplement.
+rngl: calls fois
+et rngd: calls-- ()fois.
+...
+Summary:
+gcc -pg -o lzdata lzdata.c
+rm data; ./lzdata --file-size 4 data
+gprof -b -p ./lzdata gmon.out > report2_v2.txt
+less report2_v2.txt puis copier puis q.
+ %   cumulative   self              self     total           
+ time   seconds   seconds    calls  ms/call  ms/call  name    
+ 66.84      0.02     0.02   637202     0.00     0.00  gen_match
+ 16.71      0.03     0.01  2967225     0.00     0.00  rngl
+ 16.71      0.03     0.01  1903113     0.00     0.00  rngd
+  0.00      0.03     0.00  1866644     0.00     0.00  writemem32
+  0.00      0.03     0.00   314358     0.00     0.00  gen_literal
+  0.00      0.03     0.00        7     0.00     4.30  generate_data
+  0.00      0.03     0.00        7     0.00     0.00  write_data
+  0.00      0.03     0.00        1     0.00    30.08  process_file
+    %   cumulative   self              self     total           
+ time   seconds   seconds    calls  Ts/call  Ts/call  name    
+  0.00      0.00     0.00   478829     0.00     0.00  rngl
+  0.00      0.00     0.00   346719     0.00     0.00  rngd
+  0.00      0.00     0.00   278325     0.00     0.00  writemem32
+  0.00      0.00     0.00   116112     0.00     0.00  gen_match
+  0.00      0.00     0.00    57248     0.00     0.00  gen_literal
+  0.00      0.00     0.00        1     0.00     0.00  generate_data
+  0.00      0.00     0.00        1     0.00     0.00  process_file
+  0.00      0.00     0.00        1     0.00     0.00  write_data
+report_v2.txt avec 4 pour un data2 une execution et une etude avec la trace + l'executable en question mis a jour avec 4 habituellement et redirection(option+) pour lire le report_v2.txt.
+On retrouve LES DEUX FONCTIONS QUI ONT ETE BIEN DEMANDEES.
+rm *.out pour pas mettre tous le rapport avant (²) dans l'archive released a la fin.
+FIN_QST__7.
+#FIN A7
+
+Si vous n'avez pas reussi à générer le fichier "data", créé vous-même un fichier "data" d'environ 4Mo
+pour la suite.
+
+
+Quelle est la nature de DEBUG dans les sources? Sans modifier les fichiers sources: donner une unique
+commande non composée (un seul programme executé) permettant de produire l'exécutable A
+avec DEBUG positionné (1.0)
+#DEBUT A8
+nature de DEBUG<=>nature de la variable DEBUG=>faire un grep sur *
+=>ifdef # =>nature de DEBUG est une macro.
+EXECUTABLE A avec debug positionee (on connait pas la valeur d'interessante donc cad. on positionne suivant le grep on fait la definition avec -DDEBUG ; ce qui veut dire:
+(previligier -Wall pour toutes les lignes de compialtion)):
+gcc -DDEBUG -Wall -o lzm lzm.c lzmencode.c lzmdecode.c
+VOILA.
+RESUME:
+DEBUG est une macro
+gcc -DDEBUG lzm.c lzmdecode.c lzmencode.c -o lzm(redactions ALLALI JULIEN)
+#FIN A8
+
+Utiliser le programme A pour compresser le fichier data en utilisant la compression "rapide". Lors de cette exécution
+combien d'allocations dynamiques sont effectuées par le programme? Combien d'octets ont été alloués? Donner l'intégralité
+des commandes que vous avez utilisé (2.0):
+#DEBUT A9
+Ontravaille avec data2 puis data avec mv data2 data.*
+VOILA. (les autres questions ont ete corrigees jusqu'a la)
+=>reponse a la 9:
+./lzm (prise en main)=>necessite un fichier=>pas de fichier temporaire cree ; c'est bon.
+on compresse le data.lzm(faute.. mais pas grave)
+./lzm -b 10 remplace par ./lzm -value_direct(tests de prises main car ..(on sait deja!!!))
+./lzm -1 data.lzm 
+PUIS refaire avec data.lzm.lzm pour le valgrind (?nbr_allocations dynamique;?nbr octets utilisees):
+valgrind --leak-check=full --show-reachable=yes ./lzm -1 data.lzm.lzm
+(du -c data.lzm avant du -c data(4096Ko~4Mo =>compression niveau 1 (rapide..///))).
+VOILA.
+==730468== 
+==730468== HEAP SUMMARY:
+==730468==     in use at exit: 0 bytes in 0 blocks
+==730468==   total heap usage: 4 allocs, 4 frees, 8,421,416 bytes allocated
+==730468== 
+Rapport de VALGRIND(plateforme memcheck(plateforme d'execution DONC.//)) a recopier ici.
+8 millions d'octets et 4 allocations au total..///
+=>pas de fuite memoire.
+=>rq: ./lzm tout seul permet de voir les options -1: fast compression d'ou l'idee avec data seulement en utilisant valgrind qui genere un fichier de 3.7Ko*10^3 avec la commande classique PRINCIPALE:
+valgrind --leak-check=full --show-reachable=yes ./lzm -1 data (sans lecture du Readme.md revenir en arriere ne sert a rien).
+#FIN A9
+
+Donner une unique commande non composée permettant de créer la bibliothèque dynamique (1.0)
+#DEBUT A10
+(voir la suite des questions;c'est pourtant dans ce genre de questions)
+Unique commande: pas de .o au passage -fPIC direct(code relogeable)
+-shared aussi pour l'option dynamique pas statique 
+ET: non composee: pas de lignes de compialtion separees (revient au meme...)
+=>CE QU'on doit faire:
+lzm depend de la bibliotheque
+cad. l'execution de lzm sur un fichier passe par une edition de liens avec une bibliotheque
+=>elle contiendrait pas les fonctions de lzm.c
+=>reste logiquement lzmencode.z et lzmdecode.z
+D'OU la reponse:
+gcc -fPIC -shared -o liblzm.so lzmencode.c lzmdecode.c
+VOILA.fin_qst__10().//////
+Rq: la question suivante dit qu'on doit creer lzm avec liblzm.so cad. qu'on doit faire une compilation de lzm.c manquant dans A via la bibliotheque car la bibliotheque manque d'un des 3 fichiers qui sera notamment lzm.c car lzm est un executable qui depend de la bibliotheque via le fichier lzm.h qui l'indique=>lzm.c n'entre pas dans la construction.
+SUITE LOGIQUE DE REFLEXIONS.
+#FIN A10
+
+Donner la commande permettant de créer l'executable A en utilisant la bibliothèque dynamique (0.5). Expliquer
+comment exécuter ce nouveau programme.
+#DEBUT A11
+*gcc lzm.c -llzm -L. -o lzm =>creation de lzm avec linkage a la biblio dynamique liblzm.so.
+*./lzm -1 data.lzm tout simplement car lzm est le 1 donc inclut le linkage a la bibliotheque en unqiue executable exploitable d'ou la commande souhaitee. 
+si probleme avec le chargement des libraries:
+=>export LD_LIBRARY_PATH=. puis ./lzm -1 data apres un mv data.lzm data
+ET VOILA!
+#FIN A11
+
+Donner une commande permettant de lister les dépendances en bibliothèque dynamique de l'exécutable précédent (0.5)
+#DEBUT A12
+LD_LIBRARY_PATH=. ldd ./lzm2(IMPORTANT!!!!)
+	linux-vdso.so.1 (0x00007fff787ef000)
+	liblzm.so => ./liblzm.so (0x00007feb59b31000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007feb59929000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007feb59b43000)
+
+#FIN A12
+
+Donner les commandes permettant de créer la bibliothèque statique (1.0)
+#DEBUT A13
+TJRS JE TE DIS: compiler le tout en .o sauf exceptions ce qui est pas le cas ici (car donner LES COMMANDES)
+donc: les dependances 'externes': lzmencode.c lzmdecode.c
+les commandes sont les suivantes:
+gcc -c lzmencode.c 
+gcc -c lzmdecode.c
+ar rcs liblzm.a lzmencode.o lzmdecode.o
+PUIS VERIFICATION(*///²²²) avec nm liblzm.a.//
+VOILA.
+rq: la manipualtion de la creation via ar r seulement permet d'afficher le message:
+ar: creation de liblzm.a contrairement a ar rcs.//
+rq au passage SEULEMENT(()).///*************
+FIN DE L'EXO SUR 12 pts.//
+///////
+****************************************************
+#FIN A13
+
+======================
+== Debug : 4 points ==
+======================
+
+L'objectif ici est d'analyser le programme prog.c.
+
+Donner la commande permettant de compiler le fichier en un binaire prêt à être analysé par gdb (0.5):
+#DEBUT B1
+$ gcc -g -O0 prog.c -o prog.(commande copiée pour début d'analyse)
+#FIN B1
+
+Lancer le programme et trouver l'origine de l'erreur mémoire. Indiquer l'ensemble des étapes et outils utilisés (2.0)
+#DEBUT B2
+$ valgrind --malloc-fill=AA --free-fill=BB --vgdb-error=1 ./prog 
+dans un autre terminal :
+$ gdb ./prog
+target remote | vgdb
+....
+if (b->value<a->value){
+a contient l'adresse 0x00, de fait a->value génère l'erreur SERGFAULT
+
+En regardant l'origine de l'appel (bt et up), on voit que la fonction est recursive et :
+if (b->value<a->value){
+34	    if (a->left==NULL) a->left=b;
+35	    else add(a->left,b);
+36	  } else {
+37	    if (a->left==NULL) a->right=b;
+38	    else add(a->right,b);    
+39	  }
+
+le bug est à la ligne 37:  if (a->left==NULL) a->right=b; devrait être if (a->right==NULL) a->right=b;
+
+Le bug est corrigé
+#FIN B2
+
+
+Analyser l'état de la mémoire en fin d'exécution. Expliquer la nature des différentes fuites mémoires (1.5):
+#DEBUT B3
+On a 4 fuites mémoires, une définitive de 24 octets et 3 indirectes de 72 octets.
+La fuite définitive correspond à une allocation malloc pour laquelle aucune variable globale ne contient l'adresse en fin d'execution.
+
+Pour les indirects, cela nous indique que la fuite précédente ou les indirectes entre elles contiennent les adresses des bloques (dans le champs d'une structure par exemple).
+J'ajouterais: valgrind --leak-check=full ./prog POUR MONTRER ''comment  on  ferait..///''$$.
+FIN_EXAM__2018.
+#FIN B3
+
+=====================
+== Cours: 6 points ==
+=====================
+
+Je créé une bibliothèque statique à partir de fichiers .c: quelles étapes de compilation sont utilisées? (1)
+#DEBUT C1 
+1+2.
+#FIN C1
+
+Lors d'une compilation, j'ai une erreur de type "undefined reference to", quelle est l'étape de compilation qui
+est à l'origine de cette erreur. (1)
+#DEBUT C2
+3.
+#FIN C2
+
+Donner une exemple d'utilisation des commandes diff et patch (2)
+#DEBUT C3
+diff -rupN original new > patch.print_
+cd original
+patch -p1 < ../patch.print_
+#FIN C3
+
+Quelles différences y-a-t-il entre un test unitaire et un test d'intégration? (1)
+#DEBUG C4
+1->testent le bon comportement d'une fonction sur la base de sa spécification.
+2->valide le bon fonctionnement de plusieurs modules entre eux.
+#FIN C4
+
+Dans le cadre de tests logiciels, expliquer ce qu'est la non regression (1)
+#DEBUG C5
+NON REGRESSION<=>au fur et a mesure des developpement, les tests contients d'etre valides.
+FIN_QUESTION__COURS.(6 pts)
+#FIN C5

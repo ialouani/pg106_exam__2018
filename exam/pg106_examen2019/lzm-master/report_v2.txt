@@ -1,0 +1,15 @@
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+ no time accumulated
+
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls  Ts/call  Ts/call  name    
+  0.00      0.00     0.00   478829     0.00     0.00  rngl
+  0.00      0.00     0.00   346719     0.00     0.00  rngd
+  0.00      0.00     0.00   278325     0.00     0.00  writemem32
+  0.00      0.00     0.00   116112     0.00     0.00  gen_match
+  0.00      0.00     0.00    57248     0.00     0.00  gen_literal
+  0.00      0.00     0.00        1     0.00     0.00  generate_data
+  0.00      0.00     0.00        1     0.00     0.00  process_file
+  0.00      0.00     0.00        1     0.00     0.00  write_data

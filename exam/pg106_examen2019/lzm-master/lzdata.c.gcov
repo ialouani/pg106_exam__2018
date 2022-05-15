@@ -1,0 +1,478 @@
+        -:    0:Source:lzdata.c
+        -:    0:Graph:lzdata.gcno
+        -:    0:Data:lzdata.gcda
+        -:    0:Runs:2
+        -:    1:#include <sys/types.h>
+        -:    2:#include <sys/stat.h>
+        -:    3:#include <sys/param.h>
+        -:    4:#include <fcntl.h>
+        -:    5:#include <unistd.h>
+        -:    6:#include <stdio.h>
+        -:    7:#include <stdlib.h>
+        -:    8:#include <string.h>
+        -:    9:#include <errno.h>
+        -:   10:#include <getopt.h>
+        -:   11:
+        -:   12:#include "conf.h"
+        -:   13:#include "mem.h"
+        -:   14:
+        -:   15:#define FILE_SIZE	(100 << 20)
+        -:   16:#define MIN_LIT_LEN	4
+        -:   17:#define MAX_LIT_LEN	CHUNK_SIZE
+        -:   18:#define MIN_MATCH_LEN	4
+        -:   19:#define MAX_MATCH_LEN	CHUNK_SIZE
+        -:   20:#define MIN_OFFSET	1
+        -:   21:#define MAX_OFFSET	CHUNK_SIZE
+        -:   22:#define MATCH_PROB	0.67
+        -:   23:#define LEN_SCALE	2.0
+        -:   24:#define MIN_MATCH	4
+        -:   25:
+        -:   26:#ifdef DEBUG
+        -:   27:#define LOG(fmt, ...)	do { fprintf(stderr, fmt, __VA_ARGS__); } while (0)
+        -:   28:#else
+        -:   29:#define LOG(fmt, ...)
+        -:   30:#endif
+        -:   31:
+        -:   32:struct lzdata_args {
+        -:   33:	char		*filename;
+        -:   34:	off_t		file_size;
+        -:   35:	unsigned int	chunk_size;
+        -:   36:	unsigned int	min_lit_len;
+        -:   37:	unsigned int	max_lit_len;
+        -:   38:	unsigned int	min_match_len;
+        -:   39:	unsigned int	max_match_len;
+        -:   40:	unsigned int	min_offset;
+        -:   41:	unsigned int	max_offset;
+        -:   42:	unsigned int	verbose;
+        -:   43:	double		match_prob;
+        -:   44:	double		lit_len_scale;
+        -:   45:	double		match_len_scale;
+        -:   46:	unsigned long	random_seed;
+        -:   47:	unsigned long	literals;
+        -:   48:	unsigned long	matches;
+        -:   49:	unsigned long	literal_bytes;
+        -:   50:	unsigned long	match_bytes;
+        -:   51:};
+        -:   52:
+        -:   53:enum opttype { FILESIZE, CHUNKSIZE, MINLITLEN, MAXLITLEN, MINMATCHLEN,
+        -:   54:    MAXMATCHLEN, MINOFFSET, MAXOFFSET, MATCHPROB, LITLENSCALE, MATCHLENSCALE,
+        -:   55:    RANDOMSEED, VERBOSE, HELP };
+        -:   56:
+        -:   57:static struct option long_opts[] = {
+        -:   58:    { "filesize",	required_argument,	NULL,	FILESIZE	},
+        -:   59:    { "chunksize",	required_argument,	NULL,	CHUNKSIZE	},
+        -:   60:    { "minlitlen",	required_argument,	NULL,	MINLITLEN	},
+        -:   61:    { "maxlitlen",	required_argument,	NULL,	MAXLITLEN	},
+        -:   62:    { "minmatchlen",	required_argument,	NULL,	MINMATCHLEN	},
+        -:   63:    { "maxmatchlen",	required_argument,	NULL,	MAXMATCHLEN	},
+        -:   64:    { "minoffset",	required_argument,	NULL,	MINOFFSET	},
+        -:   65:    { "maxoffset",	required_argument,	NULL,	MAXOFFSET	},
+        -:   66:    { "matchprob",	required_argument,	NULL,	MATCHPROB	},
+        -:   67:    { "litlenscale",	required_argument,	NULL,	LITLENSCALE	},
+        -:   68:    { "matchlenscale",	required_argument,	NULL,	MATCHLENSCALE	},
+        -:   69:    { "randomseed",	required_argument,	NULL,	RANDOMSEED	},
+        -:   70:    { "verbose",	no_argument,		NULL,	VERBOSE		},
+        -:   71:    { "help",		no_argument,		NULL,	HELP		},
+        -:   72:    { NULL,		no_argument,		NULL,	0		},
+        -:   73:};
+        -:   74:
+        -:   75:static void
+        1:   76:usage(void)
+        -:   77:{
+        1:   78:	printf("usage: lzdata [options] <files...>\n");
+        1:   79:	printf("	--filesize <size>	file size (MB)\n");
+        1:   80:	printf("	--chunksize <size>	chunk size (KB)\n");
+        1:   81:	printf("	--minlitlen <len>	minimum literal length\n");
+        1:   82:	printf("	--maxlitlen <len>	minimum literal length\n");
+        1:   83:	printf("	--minmatchlen <len>	minimum match length\n");
+        1:   84:	printf("	--maxmatchlen <len>	minimum match length\n");
+        1:   85:	printf("	--minoffset <len>	minimum offset length\n");
+        1:   86:	printf("	--maxoffset <len>	minimum offset length\n");
+        1:   87:	printf("	--matchprob <prob>	probability of match [0..1]\n");
+        1:   88:	printf("	--litlenscale <val>	literal length scale (> 0)\n");
+        1:   89:	printf("	--matchlenscale <val>	match length scale (> 0)\n");
+        1:   90:	printf("	--randomseed <val>	random number seed\n");
+        1:   91:	printf("	--verbose		report details used\n");
+        1:   92:	printf("	--help			this help\n");
+        1:   93:}
+        -:   94:
+        -:   95:static inline double
+   346719:   96:rngd(void)
+        -:   97:{
+   346719:   98:	return drand48();
+        -:   99:}
+        -:  100:
+        -:  101:static inline unsigned long
+   478829:  102:rngl(void)
+        -:  103:{
+   478829:  104:	return mrand48();
+        -:  105:}
+        -:  106:
+        -:  107:static unsigned int
+    57248:  108:gen_literal(unsigned char * const buffer, unsigned int pos,
+        -:  109:    const unsigned int size, struct lzdata_args * const args)
+        -:  110:{
+        -:  111:	unsigned int length;
+        -:  112:	unsigned int end;
+        -:  113:
+    57248:  114:	length = args->lit_len_scale / (1 - rngd()) -
+    57248:  115:	    args->lit_len_scale + args->min_lit_len;
+        -:  116:
+    57248:  117:	if (length > args->max_lit_len)
+    #####:  118:		length = args->max_lit_len;
+        -:  119:
+    57248:  120:	if (pos + length > size)
+    #####:  121:		length = size - pos;
+        -:  122:
+        -:  123:	LOG("L %d %d\n", pos, length);
+        -:  124:
+    57248:  125:	args->literals++;
+    57248:  126:	args->literal_bytes += length;
+        -:  127:
+    57248:  128:	end = pos + length;
+        -:  129:
+    57248:  130:	if (end > 3) {
+   335572:  131:		while (pos < end - 3) {
+   278325:  132:			writemem32(&buffer[pos], rngl());
+   278325:  133:			pos += 4;
+        -:  134:		}
+        -:  135:	}
+        -:  136:
+   141640:  137:	while (pos < end)
+    84392:  138:		buffer[pos++] = rngl();
+        -:  139:
+    57248:  140:	return pos;
+        -:  141:}
+        -:  142:
+        -:  143:static unsigned int
+   116112:  144:gen_match(unsigned char * const buffer, unsigned int pos,
+        -:  145:    const unsigned int size, struct lzdata_args * const args)
+        -:  146:{
+        -:  147:	unsigned int length;
+        -:  148:	unsigned int offset;
+        -:  149:	unsigned int maxoff;
+        -:  150:	unsigned int end;
+        -:  151:
+   116112:  152:	length = args->match_len_scale / (1 - rngd()) -
+   116112:  153:	    args->match_len_scale + args->min_match_len;
+        -:  154:
+   116112:  155:	if (length > args->max_match_len)
+    #####:  156:		length = args->max_match_len;
+        -:  157:
+   116112:  158:	if (pos + length > size)
+        1:  159:		length = size - pos;
+        -:  160:
+   116112:  161:	maxoff = args->max_offset;
+   116112:  162:	if (maxoff > pos)
+   116112:  163:		maxoff = pos;
+        -:  164:
+   116112:  165:	offset = rngl() % (maxoff - args->min_offset + 1) +
+   116112:  166:	    args->min_offset;
+        -:  167:
+        -:  168:	LOG("M %d %d %d\n", pos, length, offset);
+        -:  169:
+   116112:  170:	args->matches++;
+   116112:  171:	args->match_bytes += length;
+        -:  172:
+   116112:  173:	end = pos + length;
+        -:  174:
+   116112:  175:	if (end > 3) {
+   836227:  176:		while (pos < end - 3) {
+   720115:  177:			memcpy(&buffer[pos], &buffer[offset], 4);
+   720115:  178:			pos += 4;
+   720115:  179:			offset += 4;
+        -:  180:		}
+        -:  181:	}
+        -:  182:
+   232264:  183:	while (pos < end)
+   116152:  184:		buffer[pos++] = buffer[offset++]; 
+        -:  185:
+   116112:  186:	return pos;
+        -:  187:}
+        -:  188:
+        -:  189:static unsigned int
+        1:  190:generate_data(struct lzdata_args * const args,
+        -:  191:    unsigned char * const buffer, const unsigned int size)
+        -:  192:{
+        1:  193:	unsigned int pos = 0;
+        1:  194:	int ret = 0;
+        -:  195:
+        2:  196:	while (pos < args->min_offset)
+        1:  197:		pos = gen_literal(buffer, pos, size, args);
+        -:  198:
+   173360:  199:	while (pos < size - (args->min_match_len - 1)) {
+   173359:  200:		if (rngd() < args->match_prob)
+   116112:  201:			pos = gen_match(buffer, pos, size, args);
+        -:  202:		else
+    57247:  203:			pos = gen_literal(buffer, pos, size, args);
+        -:  204:	}
+        -:  205:
+        1:  206:	while (pos < size)
+    #####:  207:		pos = gen_literal(buffer, pos, size, args);
+        -:  208:
+        1:  209:	return ret;
+        -:  210:}
+        -:  211:
+        -:  212:static inline unsigned int
+        1:  213:write_data(int fd, const void *buffer, const size_t size)
+        -:  214:{
+        -:  215:	unsigned int resid;
+        -:  216:	int ret;
+        -:  217:
+        1:  218:	resid = size;
+        2:  219:	while (resid > 0) {
+        1:  220:		ret = write(fd, buffer, resid);
+        1:  221:		if (ret < 0)
+    #####:  222:			return errno;
+        1:  223:		resid -= ret;
+        1:  224:		buffer = (char *)buffer + ret;
+        -:  225:	}
+        -:  226:
+        1:  227:	return 0;
+        -:  228:}
+        -:  229:
+        -:  230:static unsigned int
+        1:  231:process_file(struct lzdata_args * const args)
+        -:  232:{
+        1:  233:	unsigned char *buffer = NULL;
+        -:  234:	off_t written;
+        -:  235:	unsigned int size;
+        1:  236:	int fd = -1;
+        -:  237:	int ret;
+        -:  238:
+        1:  239:	ret = posix_memalign((void **)&buffer, getpagesize(),
+        1:  240:	    args->chunk_size);
+        1:  241:	if (ret != 0) {
+    #####:  242:		ret = ENOMEM;
+    #####:  243:		fprintf(stderr, "File %s: failed to allocate %d bytes: %s\n",
+        -:  244:		    args->filename, args->chunk_size, strerror(ret));
+    #####:  245:		goto out;
+        -:  246:	}
+        -:  247:
+        1:  248:	fd = open(args->filename, O_WRONLY|O_CREAT|O_EXCL, 0600);
+        1:  249:	if (fd < 0) {
+    #####:  250:		ret = errno;
+    #####:  251:		fprintf(stderr, "File %s: failed to open file: %s\n",
+        -:  252:		    args->filename, strerror(ret));
+    #####:  253:		goto out;
+        -:  254:	}
+        -:  255:
+        1:  256:	args->literals = 0;
+        1:  257:	args->literal_bytes = 0;
+        1:  258:	args->matches = 0;
+        1:  259:	args->match_bytes = 0;
+        -:  260:
+        2:  261:	for (written = 0; written < args->file_size; written += size) {
+        -:  262:
+        1:  263:		size = args->chunk_size;
+        1:  264:		if (written + size > args->file_size)
+    #####:  265:			size = args->file_size - written;
+        -:  266:
+        1:  267:		generate_data(args, buffer, size);
+        -:  268:
+        1:  269:		ret = write_data(fd, buffer, size);
+        1:  270:		if (ret != 0) {
+    #####:  271:			fprintf(stderr, "File %s: failed to write data: %s\n",
+        -:  272:			    args->filename, strerror(ret));
+    #####:  273:			goto out;
+        -:  274:		}
+        -:  275:	}
+        -:  276:
+        1:  277:	if (args->verbose == true) {
+    #####:  278:		printf("literals %ld/%ld, matches %ld/%ld, dupe data %.4f%%\n",
+        -:  279:		    args->literals, args->literal_bytes,
+        -:  280:		    args->matches, args->match_bytes,
+    #####:  281:		    (float)args->match_bytes * 100 /
+    #####:  282:		    (float)(args->literal_bytes + args->match_bytes));
+        -:  283:	}
+        -:  284:
+        1:  285: out:
+        -:  286:
+        1:  287:	if (buffer != NULL)
+        1:  288:		free(buffer);
+        -:  289:
+        1:  290:	if (fd != -1)
+        1:  291:		close(fd);
+        -:  292:
+        1:  293:	return ret;
+        -:  294:}
+        -:  295:
+        -:  296:int
+        2:  297:main(int argc, char **argv)
+        -:  298:{
+        -:  299:	struct lzdata_args args;
+        2:  300:	int ret = 0;
+        -:  301:	int err;
+        -:  302:	int c;
+        -:  303:
+        2:  304:	args.file_size = FILE_SIZE;
+        2:  305:	args.chunk_size = CHUNK_SIZE;
+        2:  306:	args.min_lit_len = 0;
+        2:  307:	args.max_lit_len = 0;
+        2:  308:	args.min_match_len = 0;
+        2:  309:	args.max_match_len = 0;
+        2:  310:	args.min_offset = 0;
+        2:  311:	args.max_offset = 0;
+        2:  312:	args.verbose = false;
+        2:  313:	args.match_prob = MATCH_PROB;
+        2:  314:	args.lit_len_scale = LEN_SCALE;
+        2:  315:	args.match_len_scale = LEN_SCALE;
+        2:  316:	args.random_seed = 0;
+        -:  317:
+        3:  318:	while ((c = getopt_long(argc, argv, "hv", long_opts, NULL)) != EOF) {
+        1:  319:		switch (c) {
+        1:  320:		case FILESIZE:
+        1:  321:			args.file_size = strtoul(optarg, NULL, 0);
+        1:  322:			if (args.chunk_size == 0) {
+    #####:  323:				fprintf(stderr, "Error: file size is zero");
+    #####:  324:				exit(1);
+        -:  325:			}
+        1:  326:			args.file_size <<= 20;
+        1:  327:			break;
+    #####:  328:		case CHUNKSIZE:
+    #####:  329:			args.chunk_size = strtoul(optarg, NULL, 0);
+    #####:  330:			if (args.chunk_size == 0) {
+    #####:  331:				fprintf(stderr, "Error: chunk size is zero");
+    #####:  332:				exit(1);
+        -:  333:			}
+    #####:  334:			args.chunk_size <<= 10;
+    #####:  335:			break;
+    #####:  336:		case MINLITLEN:
+    #####:  337:			args.min_lit_len = strtoul(optarg, NULL, 0);
+    #####:  338:			if (args.min_lit_len == 0) {
+    #####:  339:				fprintf(stderr, "Error: bad min lit len");
+    #####:  340:				exit(1);
+        -:  341:			}
+    #####:  342:			break;
+    #####:  343:		case MAXLITLEN:
+    #####:  344:			args.max_lit_len = strtoul(optarg, NULL, 0);
+    #####:  345:			if (args.max_lit_len == 0) {
+    #####:  346:				fprintf(stderr, "Error: bad max lit len");
+    #####:  347:				exit(1);
+        -:  348:			}
+    #####:  349:			break;
+    #####:  350:		case MINMATCHLEN:
+    #####:  351:			args.min_match_len = strtoul(optarg, NULL, 0);
+    #####:  352:			if (args.min_match_len == 0) {
+    #####:  353:				fprintf(stderr, "Error: bad min match len");
+    #####:  354:				exit(1);
+        -:  355:			}
+    #####:  356:			break;
+    #####:  357:		case MAXMATCHLEN:
+    #####:  358:			args.max_match_len = strtoul(optarg, NULL, 0);
+    #####:  359:			if (args.max_match_len == 0) {
+    #####:  360:				fprintf(stderr, "Error: bad max match len");
+    #####:  361:				exit(1);
+        -:  362:			}
+    #####:  363:			break;
+    #####:  364:		case MINOFFSET:
+    #####:  365:			args.min_offset = strtoul(optarg, NULL, 0);
+    #####:  366:			if (args.min_offset == 0) {
+    #####:  367:				fprintf(stderr, "Error: bad min offset");
+    #####:  368:				exit(1);
+        -:  369:			}
+    #####:  370:			break;
+    #####:  371:		case MAXOFFSET:
+    #####:  372:			args.max_offset = strtoul(optarg, NULL, 0);
+    #####:  373:			if (args.max_offset == 0) {
+    #####:  374:				fprintf(stderr, "Error: bad max offset");
+    #####:  375:				exit(1);
+        -:  376:			}
+    #####:  377:			break;
+    #####:  378:		case MATCHPROB:
+    #####:  379:			args.match_prob = strtod(optarg, NULL);
+    #####:  380:			if (args.match_prob < 0.0 || args.match_prob > 1.0) {
+    #####:  381:				fprintf(stderr, "Error: bad match prob");
+    #####:  382:				exit(1);
+        -:  383:			}
+    #####:  384:			break;
+    #####:  385:		case LITLENSCALE:
+    #####:  386:			args.lit_len_scale = strtod(optarg, NULL);
+    #####:  387:			if (args.lit_len_scale < 0.0) {
+    #####:  388:				fprintf(stderr, "Error: bad lit len scale");
+    #####:  389:				exit(1);
+        -:  390:			}
+    #####:  391:			break;
+    #####:  392:		case MATCHLENSCALE:
+    #####:  393:			args.match_len_scale = strtod(optarg, NULL);
+    #####:  394:			if (args.match_len_scale < 0.0) {
+    #####:  395:				fprintf(stderr, "Error: bad match len scale");
+    #####:  396:				exit(1);
+        -:  397:			}
+    #####:  398:			break;
+    #####:  399:		case RANDOMSEED:
+    #####:  400:			args.random_seed = strtoul(optarg, NULL, 0);
+    #####:  401:			break;
+    #####:  402:		case 'v':
+        -:  403:		case VERBOSE:
+    #####:  404:			args.verbose = true;
+    #####:  405:			break;
+    #####:  406:		case 'h':
+        -:  407:		case HELP:
+        -:  408:		default:
+    #####:  409:			usage();
+    #####:  410:			exit(1);
+        -:  411:			break;
+        -:  412:		}
+        -:  413:	}
+        -:  414:
+        2:  415:	if (args.min_lit_len == 0)
+        2:  416:		args.min_lit_len = 1;
+        2:  417:	if (args.max_lit_len == 0)
+        2:  418:		args.max_lit_len = args.chunk_size;
+        2:  419:	if (args.min_match_len == 0)
+        2:  420:		args.min_match_len = MIN_MATCH;
+        2:  421:	if (args.max_match_len == 0)
+        2:  422:		args.max_match_len = args.chunk_size;
+        2:  423:	if (args.min_offset == 0)
+        2:  424:		args.min_offset = 1;
+        2:  425:	if (args.max_offset == 0)
+        2:  426:		args.max_offset = args.chunk_size;
+        -:  427:
+        2:  428:	if (args.min_lit_len > args.max_lit_len) {
+    #####:  429:		fprintf(stderr, "Error: min lit length > max lit length\n");
+    #####:  430:		exit(1);
+        -:  431:	}
+        -:  432:
+        2:  433:	if (args.min_match_len > args.max_match_len) {
+    #####:  434:		fprintf(stderr, "Error: min match length > max match length\n");
+    #####:  435:		exit(1);
+        -:  436:	}
+        -:  437:
+        2:  438:	if (args.min_offset > args.max_offset) {
+    #####:  439:		fprintf(stderr, "Error: min offset > max offset\n");
+    #####:  440:		exit(1);
+        -:  441:	}
+        -:  442:
+        2:  443:	if (optind == argc) {
+        1:  444:		usage();
+        1:  445:		exit(1);
+        -:  446:	}
+        -:  447:
+        1:  448:	if (args.verbose == true) {
+    #####:  449:		printf("File size: %lu\n", args.file_size);
+    #####:  450:		printf("Chunk size: %u\n", args.chunk_size);
+    #####:  451:		printf("Min lit len: %u\n", args.min_lit_len);
+    #####:  452:		printf("Max lit len: %u\n", args.max_lit_len);
+    #####:  453:		printf("Min match len: %u\n", args.min_match_len);
+    #####:  454:		printf("Max match len: %u\n", args.max_match_len);
+    #####:  455:		printf("Min offset: %u\n", args.min_offset);
+    #####:  456:		printf("Max offset: %u\n", args.max_offset);
+    #####:  457:		printf("Match probability: %.4f\n", args.match_prob);
+    #####:  458:		printf("Lit len scale: %.4f\n", args.lit_len_scale);
+    #####:  459:		printf("Match len scale: %.4f\n", args.match_len_scale);
+    #####:  460:		printf("Random seed: %lu\n", args.random_seed);
+        -:  461:	}
+        -:  462:
+        1:  463:	srand48(args.random_seed);
+        -:  464:
+        2:  465:	while (optind < argc) {
+        1:  466:		args.filename = argv[optind];
+        1:  467:		err = process_file(&args);
+        1:  468:		if (ret == 0)
+        1:  469:			ret = err;
+        1:  470:		optind++;
+        -:  471:	}
+        -:  472:
+        1:  473:	return ret;
+        -:  474:}
